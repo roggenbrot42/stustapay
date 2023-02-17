@@ -16,7 +16,8 @@ import androidx.activity.compose.setContent
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.HiltAndroidApp
 import de.stustanet.stustapay.nfc.NfcHandler
-import de.stustanet.stustapay.data.NfcState
+import de.stustanet.stustapay.nfc.NfcState
+import de.stustanet.stustapay.ec.SumUpHandler
 import de.stustanet.stustapay.ui.Main
 import javax.inject.Inject
 
@@ -31,11 +32,14 @@ interface SysUiController {
 class MainActivity : ComponentActivity(), SysUiController {
     @Inject lateinit var nfcState: NfcState
     private lateinit var nfcHandler: NfcHandler
+    private lateinit var sumupHandler : SumUpHandler
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         nfcHandler = NfcHandler(this, nfcState)
         nfcHandler.onCreate()
+        sumupHandler = SumUpHandler(this, 50309);
+        sumupHandler.init()
 
         setContent {
             Main(this)
@@ -64,6 +68,15 @@ class MainActivity : ComponentActivity(), SysUiController {
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             if (tag != null) {
                 nfcHandler.handleTag(intent.action!!, tag)
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data);
+        when (requestCode) {
+            50309 -> {
+                sumupHandler.paymentResult(resultCode, data!!.extras)
             }
         }
     }

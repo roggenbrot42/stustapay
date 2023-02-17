@@ -77,6 +77,13 @@ private fun getNavItems(): List<NavMenuItem> {
     )
     itemsList.add(
         NavMenuItem(
+            icon = Icons.Filled.ShoppingCart,
+            label = "SumUpTest",
+            navDestination = RootNavDests.sumupstatus,
+        )
+    )
+    itemsList.add(
+        NavMenuItem(
             icon = Icons.Filled.Settings,
             label = "Settings",
             navDestination = RootNavDests.settings,

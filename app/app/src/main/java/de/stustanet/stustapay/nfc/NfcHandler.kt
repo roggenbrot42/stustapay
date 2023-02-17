@@ -7,7 +7,6 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
 import android.widget.Toast
-import de.stustanet.stustapay.data.NfcState
 import kotlinx.coroutines.flow.update
 
 class NfcHandler(private var activity: Activity, private var nfcState: NfcState) {

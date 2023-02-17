@@ -11,6 +11,7 @@ object RootNavDests {
     val ordering = NavDest("ordering", showNavbar = false)
     val qrscan = NavDest("qrscan")
     val chipstatus = NavDest("chipstatus")
+    val sumupstatus = NavDest ("sumupstatus")
     val settings = NavDest("settings")
     val connTest = NavDest("connTest")
 

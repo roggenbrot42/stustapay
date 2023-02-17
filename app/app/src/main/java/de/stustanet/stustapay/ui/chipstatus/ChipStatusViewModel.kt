@@ -3,7 +3,7 @@ package de.stustanet.stustapay.ui.chipstatus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import de.stustanet.stustapay.data.NfcState
+import de.stustanet.stustapay.nfc.NfcState
 import kotlinx.coroutines.flow.*
 import javax.inject.Inject
 

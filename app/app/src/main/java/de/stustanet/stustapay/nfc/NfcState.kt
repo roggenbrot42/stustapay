@@ -1,4 +1,4 @@
-package de.stustanet.stustapay.data
+package de.stustanet.stustapay.nfc
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import javax.inject.Inject

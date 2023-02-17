@@ -18,6 +18,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import de.stustanet.stustapay.SysUiController
 import de.stustanet.stustapay.ui.chipstatus.ChipStatusView
+import de.stustanet.stustapay.ui.chipstatus.SumUpView
+import de.stustanet.stustapay.ui.ec.SumUpViewModel
 import de.stustanet.stustapay.ui.theme.StuStaPayTheme
 
 
@@ -111,6 +113,9 @@ fun RootView(uictrl: SysUiController? = null) {
             ) {
                 ChipStatusView()
             }
+        }
+        composable(RootNavDests.sumupstatus.route) {
+            SumUpView()
         }
     }
 }
