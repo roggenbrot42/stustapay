@@ -11,7 +11,7 @@
 -- - user identification through tokens
 -- - accounts for users, ware input/output and payment providers
 -- - products with custom tax rates
--- - terminal configuration profiles
+-- - till configuration profiles
 
 -- security definer functions are executed in setuid-mode
 -- to grant access to them, use:
@@ -33,31 +33,53 @@ insert into config (
     key, value
 )
 values
-    ('receipt_addr', 'StuStaPay Payment System')
+    -- event organizer name
+    ('bon.issuer', 'der verein'),
+    -- event organizer address
+    ('bon.addr', E'Müsterstraße 12\n12398 Test Stadt'),
+    -- title on top of the bon. This usually is the name of the event like StuStaCulum 2023
+    ('bon.title', 'StuStaCulum 2023'),
+    -- json array. One of the strings is printed at the end of a bon
+    ('bon.closing_texts', '["funny text 0", "funny text 1", "funny text 2", "funny text 3"]'),
 
+    -- Umsatzsteuer ID. Needed on each bon
+    ('ust_id', 'DE123456789')
     on conflict do nothing;
 
 
--- some secret about one or many tokens
-create table if not exists token_secret (
+create table if not exists restriction_type (
+    name text not null primary key
+);
+insert into restriction_type (
+    name
+)
+values
+    ('under_18'),
+    ('under_16')
+    on conflict do nothing;
+
+
+-- some secret about one or many user_tags
+create table if not exists user_tag_secret (
     id bigserial not null primary key
 );
 
 -- for wristbands/cards/...
-create table if not exists token(
+create table if not exists user_tag (
     id bigserial not null primary key,
-    -- hardware id of the token
-    uid text not null,
+    -- hardware id of the tag
+    uid numeric(20) not null unique,
     -- printed on the back
     pin text,
     -- produced by wristband vendor
     serial text,
+    -- age restriction information
+    restriction text references restriction_type(name),
 
-    -- to validate token authenticity
-    -- secret maybe shared with several tokens.
-    secret int references token_secret(id) on delete restrict
+    -- to validate tag authenticity
+    -- secret maybe shared with several tags.
+    secret bigint references user_tag_secret(id) on delete restrict
 );
-create index if not exists token_uid ON token USING btree (uid);
 
 
 create table if not exists account_type (
@@ -84,8 +106,9 @@ values
 -- bookkeeping account
 create table if not exists account (
     id bigserial not null primary key,
-    token_id bigint references token(id) on delete cascade,
-    type text references account_type(name) on delete restrict,
+    user_tag_id bigint references user_tag(id) on delete cascade,
+    type text not null references account_type(name) on delete restrict,
+    constraint private_account_requires_user_tag check (user_tag_id is not null = (type = 'private')),
     name text,
     comment text,
 
@@ -96,6 +119,19 @@ create table if not exists account (
     -- todo: voucher
     -- todo: topup-config
 );
+insert into account (
+    id, user_tag_id, type, name, comment
+)
+values
+    -- virtual accounts are hard coded with ids 0-99
+    (0, null, 'virtual', 'Sale Exit', 'target account for sales of the system'),
+    (1, null, 'virtual', 'Cash Entry', 'source account, when cash is brought in the system (cash top_up, ...)'),
+    (2, null, 'virtual', 'Deposit', 'Deposit currently at the customers'),
+    (3, null, 'virtual', 'Sumup', 'source account for sumup top up '),
+    (4, null, 'virtual', 'Cash Vault', 'Main Cash tresor. At some point cash top up lands here'),
+    (5, null, 'virtual', 'Imbalace', 'Imbalance on a cash register on settlement')
+    on conflict do nothing;
+select setval('account_id_seq', 100);
 
 
 -- people working with the payment system
@@ -106,14 +142,21 @@ create table if not exists usr (
     password text,
     description text,
 
-    -- e.g. the backpack-account, or the cash drawer
-    account bigint references account(id) on delete restrict
+    user_tag_id bigint references user_tag(id) on delete restrict,
+
+    -- account for orgas to transport cash from one location to another
+    transport_account_id bigint references account(id) on delete restrict,
+    -- account for cashiers to store the current cash balance in input or output locations
+    cashier_account_id bigint references account(id) on delete restrict
+    -- depending on the transfer action, the correct account is booked
+
+    constraint password_or_user_tag_id_set check ((user_tag_id is null) <> (password is null))
 );
 
 
 create table if not exists usr_session (
     id serial not null primary key,
-    usr int references usr(id) on delete cascade not null
+    usr int not null references usr(id) on delete cascade
 );
 
 
@@ -124,16 +167,32 @@ insert into privilege (
     name
 )
 values
+    -- Super Use
     ('admin'),
-    ('orga'),
+    -- Finanzorga
+    ('finanzorga'),
+    -- Standleiter
+    -- ('orga'),
+    -- Helfer
     ('cashier')
     on conflict do nothing;
 
 create table if not exists usr_privs (
-    usr int references usr(id) on delete cascade,
-    priv text references privilege(name) on delete cascade
+    usr int not null references usr(id) on delete cascade,
+    priv text not null references privilege(name) on delete cascade
 );
 
+create or replace view usr_with_privileges as (
+    select
+        usr.*,
+        coalesce(privs.privs, '{}'::text array) as privileges
+    from usr
+    left join (
+        select p.usr as user_id, array_agg(p.priv) as privs
+        from usr_privs p
+        group by p.usr
+    ) privs on usr.id = privs.user_id
+);
 
 create table if not exists payment_method (
     name text not null primary key
@@ -164,12 +223,10 @@ insert into order_type (
 values
     -- load token with cash
     ('topup_cash'),
-    -- load token with ec
-    ('topup_ec'),
-    -- load token with paypal
-    ('topup_paypal'),
+    -- load token with sumup
+    ('topup_sumup'),
     -- buy items to consume
-    ('buy_wares')
+    ('sale')
     on conflict do nothing;
 
 
@@ -182,7 +239,7 @@ insert into tax (
     name, rate, description
 )
 values
-    -- for internal transfers
+    -- for internal transfers, THIS LINE MUST NOT BE DELETED, EVEN BY AN ADMIN
     ('none', 0.0, 'keine Steuer'),
 
     -- reduced sales tax for food etc
@@ -196,56 +253,111 @@ values
     on conflict do nothing;
 
 
-
 create table if not exists product (
     id serial not null primary key,
-
     -- todo: ean or something for receipt?
-
     name text not null unique,
+    -- price including tax (what is charged in the end)
+    price numeric,
+    -- price is not fixed, e.g for top up. Then price=null and set with the api call
+    fixed_price boolean not null default true,
+    constraint product_not_fixed_or_price check ( price is not null = fixed_price),
 
-    -- price without tax, null if free price
-    price numeric not null,
+    -- if target account is set, the product is booked to this specific account,
+    -- e.g. for the deposit account, or a specific exit account (for beer, ...)
+    target_account_id int references account(id) on delete restrict,
 
     -- todo: payment possible with voucher?
     -- how many vouchers of which kind does it cost?
 
-    tax name not null references tax(name) on delete restrict
+    tax_name text not null references tax(name) on delete restrict
 );
 
-
-create table if not exists cash_desk_layout (
-    id serial not null primary key,
-    name text not null,
-    description text,
-    config json
+-- which products are not allowed to be bought with the user tag restriction (eg beer, below 16)
+create table if not exists product_restriction (
+    id bigint not null references product(id) on delete cascade,
+    restriction text not null references restriction_type(name) on delete restrict ,
+    primary key (id, restriction)
 );
 
+create or replace view product_as_json as (
+    select p.id, json_agg(p)->0 as json
+    from product p
+    group by p.id
+);
 
-create table if not exists cash_desk_profile (
+create table if not exists till_layout (
     id serial not null primary key,
-    name text not null,
+    name text not null unique,
+    description text
+);
+
+create table if not exists till_button (
+    id serial not null primary key,
+    name text not null unique
+);
+
+create table if not exists till_button_product (
+    button_id int not null references till_button(id) on delete cascade,
+    product_id int not null references product(id) on delete cascade,
+    primary key(button_id, product_id)
+);
+
+create or replace view till_button_with_products as (
+    select
+        t.*,
+        coalesce(j_view.price, 0) as price,
+        coalesce(j_view.product_ids, '{}'::int array) as product_ids
+    from till_button t
+    left join (
+        select tlb.button_id, sum(p.price) as price, array_agg(tlb.product_id) as product_ids
+        from till_button_product tlb
+        join product p on tlb.product_id = p.id
+        group by tlb.button_id
+    ) j_view on t.id = j_view.button_id
+);
+
+create table if not exists till_layout_to_button (
+    layout_id int not null references till_layout(id) on delete cascade,
+    button_id int not null references till_button(id) on delete restrict,
+    sequence_number int not null unique,
+    primary key (layout_id, button_id)
+);
+
+create or replace view till_layout_with_buttons as (
+    select t.*, coalesce(j_view.button_ids, '{}'::int array) as button_ids
+    from till_layout t
+    left join (
+        select tltb.layout_id, array_agg(tltb.button_id order by tltb.sequence_number) as button_ids
+        from till_layout_to_button tltb
+        group by tltb.layout_id
+    ) j_view on t.id = j_view.layout_id
+);
+
+create table if not exists till_profile (
+    id serial not null primary key,
+    name text not null unique,
     description text,
-    layout int references cash_desk_layout(id)
+    allow_top_up boolean not null default false,
+    layout_id int not null references till_layout(id) on delete restrict
     -- todo: payment_methods?
 );
 
-
 -- which cash desks do we have and in which state are they
-create table if not exists terminal (
+create table if not exists till (
     id serial not null primary key,
-    name text not null,
+    name text not null unique,
     description text,
     registration_uuid uuid unique,
     session_uuid uuid unique,
 
-    -- how this terminal is mapped to a tse
+    -- how this till is mapped to a tse
     tse_id text,
 
     -- identifies the current active work shift and configuration
     active_shift text,
-    active_profile int references cash_desk_profile(id) on delete restrict,
-    active_cashier int references usr(id) on delete restrict,
+    active_profile_id int not null references till_profile(id) on delete restrict,
+    active_user_id int references usr(id) on delete restrict,
 
     constraint registration_or_session_uuid_null check ((registration_uuid is null) <> (session_uuid is null))
 );
@@ -268,6 +380,7 @@ values
 -- represents an order of an customer, like buying wares or top up
 create table if not exists ordr (
     id bigserial not null primary key,
+    uuid uuid not null default gen_random_uuid() unique,
 
     -- order values can be obtained with order_value
 
@@ -287,13 +400,13 @@ create table if not exists ordr (
     --       or inline-json without separate table?
 
     -- type of the order like, top up, buy beer,
-    order_type text references order_type(name) on delete restrict,
+    order_type text not null references order_type(name) on delete restrict,
 
     -- who created it
     cashier_id int not null references usr(id) on delete restrict,
-    terminal_id int not null references terminal(id) on delete restrict,
+    till_id int not null references till(id) on delete restrict,
     -- customer is allowed to be null, as it is only known on the final booking, not on the creation of the order
-    -- canceled orders can have no
+    -- canceled orders can have no customer
     customer_account_id int references account(id) on delete restrict
 );
 
@@ -307,7 +420,7 @@ create table if not exists lineitem (
 
     quantity int not null default 1,
 
-    -- price without tax
+    -- price with tax
     price numeric not null,
 
     -- tax amount
@@ -317,17 +430,26 @@ create table if not exists lineitem (
     -- todo: voucher amount
 );
 
+create or replace view lineitem_tax as
+    select
+        l.*,
+        l.price * l.quantity as total_price,
+        round(l.price * l.quantity * l.tax_rate / (1 + l.tax_rate ), 2) as total_tax,
+        p.json as product
+    from lineitem l join product_as_json p on l.product_id = p.id;
+
 -- aggregates the lineitem's amounts
 create or replace view order_value as
     select
         ordr.*,
-        sum((price + price * tax_rate) * quantity) as value_sum,
-        sum(price * tax_rate * quantity) as value_tax,
-        sum(price * quantity) as value_notax
+        sum(total_price) as value_sum,
+        sum(total_tax) as value_tax,
+        sum(total_price - total_tax) as value_notax,
+        json_agg(lineitem_tax) as line_items
     from
         ordr
-        left join lineitem
-            on (ordr.id = lineitem.order_id)
+        left join lineitem_tax
+            on (ordr.id = lineitem_tax.order_id)
     group by
         ordr.id;
 
@@ -347,13 +469,13 @@ create or replace view order_tax_rates as
         ordr.*,
         tax_name,
         tax_rate,
-        sum((price + price * tax_rate) * quantity) as value_sum,
-        sum(price * tax_rate * quantity) as value_tax,
-        sum(price * quantity) as value_notax
+        sum(total_price) as value_sum,
+        sum(total_tax) as value_tax,
+        sum(total_price - total_tax) as value_notax
     from
         ordr
-        left join lineitem
-            on (ordr.id = lineitem.order_id)
+        left join lineitem_tax
+            on (ordr.id = order_id)
         group by
             ordr.id, tax_rate, tax_name;
 
@@ -396,11 +518,20 @@ create or replace function book_transaction (
 <<locals>> declare
     transaction_id bigint;
     tax_rate numeric;
+    temp_account_id bigint;
 begin
     -- resolve tax rate
     select rate from tax where name = tax_name into locals.tax_rate;
     if locals.tax_rate is null then
         raise 'unknown tax name';
+    end if;
+
+    if amount < 0 then
+        -- swap account on negative amount, as only non-negative transactions are allowed
+        temp_account_id = source_account_id;
+        source_account_id = target_account_id;
+        target_account_id = temp_account_id;
+        amount = -amount;
     end if;
 
     -- add new transaction

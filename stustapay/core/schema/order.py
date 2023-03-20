@@ -1,95 +1,86 @@
 import datetime
-from dataclasses import dataclass
+import enum
+from typing import Optional
+from uuid import UUID
+
+from pydantic import BaseModel, root_validator
 
 from stustapay.core.schema.product import Product
 
 
-@dataclass
-class NewLineItem:
+class OrderType(enum.Enum):
+    sale = "sale"
+    topup_cash = "topup_cash"
+    topup_sumup = "topup_sumup"
+
+
+class NewLineItem(BaseModel):
     product_id: int
-    quantity: int
+
+    # for products with a fixed price, the quantity must be specified
+    # for products with variable price the used price must be set
+    quantity: Optional[int]
+    price: Optional[float]
+
+    # check for new Items if either quantity or price is set
+    @root_validator
+    def check_quantity_or_price_set(cls, values):  # pylint: disable=no-self-argument
+        if cls == LineItem:
+            # only check for new line item
+            return values
+        quantity, price = values.get("quantity"), values.get("price")
+        if (quantity is None) == (price is None):
+            raise ValueError("either price or quantity must be set")
+        return values
 
 
-@dataclass
-class NewOrder:
+class NewOrder(BaseModel):
     positions: list[NewLineItem]
+    order_type: OrderType
+    customer_tag: int
 
 
-@dataclass
 class LineItem(NewLineItem):
     order_id: int
     item_id: int
     product: Product
     price: float
-    price_brutto: float
-    price_sum: float
+    total_price: float
     tax_name: str
     tax_rate: float
-
-    @classmethod
-    def from_db(cls, row) -> "LineItem":
-        return cls(
-            order_id=row["order_id"],
-            item_id=row["item_id"],
-            product_id=row["product_id"],
-            product=Product.from_db(row),
-            quantity=row["quantity"],
-            price=row["price"],
-            price_brutto=row["price"] * (1 + row["tax_rate"]),
-            price_sum=row["price"] * (1 + row["tax_rate"]) * row["quantity"],
-            tax_name=row["tax_name"],
-            tax_rate=row["tax_rate"],
-        )
+    total_tax: float
 
 
-@dataclass
-class OrderBooking:
+class OrderBooking(BaseModel):
     value_sum: float
     value_tax: float
     value_notax: float
 
 
-@dataclass
-class OrderID:
+class CompletedOrder(BaseModel):
     id: int
+    uuid: UUID
+    old_balance: float
+    new_balance: float
 
 
-@dataclass
-class Account:
-    name: str
-    balance: float
-
-
-@dataclass
 class Order(OrderBooking):
     """
     represents a completely finished order with all relevant data
     """
 
     id: int
+    uuid: UUID
     itemcount: int
     status: str
     created_at: datetime.datetime
-    finished_at: datetime.datetime
-    payment_method: str
+    finished_at: Optional[datetime.datetime]
+    payment_method: Optional[str]
+    order_type: OrderType
+
+    # foreign keys
+    cashier_id: int
+    till_id: int
+    customer_account_id: int
+
     line_items: list[LineItem]
-
-    # TODO how to handle foreign keys
-    # cashier_id: User
-    # terminal_id: Terminal
-    # customer_account_id: Account
-
-    @classmethod
-    def from_db(cls, row, line_items) -> "Order":
-        return cls(
-            id=row["id"],
-            itemcount=row["itemcount"],
-            status=row["status"],
-            created_at=row["created_at"],
-            finished_at=row["finished_at"],
-            payment_method=row["payment_method"],
-            value_sum=row["value_sum"],
-            value_tax=row["value_tax"],
-            value_notax=row["value_notax"],
-            line_items=line_items,
-        )

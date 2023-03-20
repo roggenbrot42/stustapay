@@ -13,11 +13,11 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.HiltAndroidApp
+import de.stustanet.stustapay.model.NfcState
 import de.stustanet.stustapay.nfc.NfcHandler
-import de.stustanet.stustapay.nfc.NfcState
-import de.stustanet.stustapay.ec.SumUpHandler
 import de.stustanet.stustapay.ui.Main
 import javax.inject.Inject
 
@@ -30,9 +30,12 @@ interface SysUiController {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity(), SysUiController {
-    @Inject lateinit var nfcState: NfcState
+    @Inject
+    lateinit var nfcState: NfcState
     private lateinit var nfcHandler: NfcHandler
     private lateinit var sumupHandler : SumUpHandler
+
+    val viewModel: MainActivityViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

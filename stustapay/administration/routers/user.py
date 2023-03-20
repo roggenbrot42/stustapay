@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
 
-from stustapay.core.http.auth_user import get_current_user
-from stustapay.core.http.context import get_user_service
+from fastapi import APIRouter, HTTPException, status
+
+from stustapay.core.http.auth_user import CurrentAuthToken
+from stustapay.core.http.context import ContextUserService
 from stustapay.core.schema.user import User, UserWithoutId
-from stustapay.core.service.user import UserService
 
 router = APIRouter(
     prefix="/users",
@@ -13,24 +14,26 @@ router = APIRouter(
 
 
 @router.get("/", response_model=list[User])
-async def list_users(
-    current_user: User = Depends(get_current_user), user_service: UserService = Depends(get_user_service)
-):
-    return await user_service.list_users(current_user=current_user)
+async def list_users(token: CurrentAuthToken, user_service: ContextUserService):
+    return await user_service.list_users(token=token)
+
+
+class CreateUserPayload(UserWithoutId):
+    password: Optional[str]
 
 
 @router.post("/", response_model=User)
 async def create_user(
-    user: User, current_user: User = Depends(get_current_user), user_service: UserService = Depends(get_user_service)
+    new_user: CreateUserPayload,
+    token: CurrentAuthToken,
+    user_service: ContextUserService,
 ):
-    return await user_service.create_user(current_user=current_user, user=user)
+    return await user_service.create_user(token=token, new_user=new_user, password=new_user.password)
 
 
 @router.get("/{user_id}", response_model=User)
-async def get_user(
-    user_id: int, current_user: User = Depends(get_current_user), user_service: UserService = Depends(get_user_service)
-):
-    user = await user_service.get_user(current_user=current_user, user_id=user_id)
+async def get_user(user_id: int, token: CurrentAuthToken, user_service: ContextUserService):
+    user = await user_service.get_user(token=token, user_id=user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
@@ -41,10 +44,10 @@ async def get_user(
 async def update_user(
     user_id: int,
     user: UserWithoutId,
-    current_user: User = Depends(get_current_user),
-    user_service: UserService = Depends(get_user_service),
+    token: CurrentAuthToken,
+    user_service: ContextUserService,
 ):
-    user = await user_service.update_user(current_user=current_user, user_id=user_id, user=user)
+    user = await user_service.update_user(token=token, user_id=user_id, user=user)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
@@ -52,9 +55,7 @@ async def update_user(
 
 
 @router.delete("/{user_id}")
-async def delete_user(
-    user_id: int, current_user: User = Depends(get_current_user), user_service: UserService = Depends(get_user_service)
-):
-    deleted = await user_service.delete_user(current_user=current_user, user_id=user_id)
+async def delete_user(user_id: int, token: CurrentAuthToken, user_service: ContextUserService):
+    deleted = await user_service.delete_user(token=token, user_id=user_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { ErrorPage } from "./ErrorPage";
-import { TerminalList } from "./routes/terminals/TerminalList";
+import { TillList } from "./routes/tills/TillList";
 import { ProductCreate } from "./routes/products/ProductCreate";
 import { ProductUpdate } from "./routes/products/ProductUpdate";
 import { ProductList } from "./routes/products/ProductList";
@@ -9,14 +9,22 @@ import { TaxRateCreate } from "./routes/tax-rates/TaxRateCreate";
 import { TaxRateUpdate } from "./routes/tax-rates/TaxRateUpdate";
 import { TaxRateList } from "./routes/tax-rates/TaxRateList";
 import { AuthenticatedRoot } from "./routes/AuthenticatedRoot";
-import { UserList } from "./routes/users/UserList";
 import { Settings } from "./routes/settings/Settings";
 import { Login } from "./routes/auth/Login";
 import { UnauthenticatedRoot } from "./routes/UnauthenticatedRoot";
-import { TerminalCreate } from "./routes/terminals/TerminalCreate";
-import { TerminalUpdate } from "./routes/terminals/TerminalUpdate";
+import { TillCreate } from "./routes/tills/TillCreate";
+import { TillUpdate } from "./routes/tills/TillUpdate";
 import { Logout } from "./routes/auth/Logout";
-import { TerminalDetail } from "./routes/terminals/TerminalDetail";
+import { TillDetail } from "./routes/tills/TillDetail";
+import { TillLayoutCreate, TillLayoutUpdate, TillLayoutList, TillLayoutDetail } from "./routes/till-layouts";
+import { TillProfileCreate, TillProfileUpdate, TillProfileList } from "./routes/till-profiles";
+import { TillProfileDetail } from "./routes/till-profiles/TillProfileDetail";
+import { TillButtonUpdate } from "./routes/till-buttons/TillButtonUpdate";
+import { TillButtonCreate } from "./routes/till-buttons/TillButtonCreate";
+import { TillButtonList } from "./routes/till-buttons/TillButtonList";
+import { UserUpdate, UserDetail, UserList, UserCreate } from "./routes/users";
+import { AccountList } from "./routes/accounts/AccountList";
+import { OrderList } from "./routes/orders/OrderList";
 
 const router = createBrowserRouter([
   {
@@ -53,24 +61,88 @@ const router = createBrowserRouter([
         element: <TaxRateUpdate />,
       },
       {
-        path: "terminals",
-        element: <TerminalList />,
+        path: "tills",
+        element: <TillList />,
       },
       {
-        path: "terminals/new",
-        element: <TerminalCreate />,
+        path: "tills/new",
+        element: <TillCreate />,
       },
       {
-        path: "terminals/:terminalId/edit",
-        element: <TerminalUpdate />,
+        path: "tills/:tillId/edit",
+        element: <TillUpdate />,
       },
       {
-        path: "terminals/:terminalId",
-        element: <TerminalDetail />,
+        path: "tills/:tillId",
+        element: <TillDetail />,
+      },
+      {
+        path: "till-buttons",
+        element: <TillButtonList />,
+      },
+      {
+        path: "till-buttons/new",
+        element: <TillButtonCreate />,
+      },
+      {
+        path: "till-buttons/:buttonId/edit",
+        element: <TillButtonUpdate />,
+      },
+      {
+        path: "till-layouts",
+        element: <TillLayoutList />,
+      },
+      {
+        path: "till-layouts/new",
+        element: <TillLayoutCreate />,
+      },
+      {
+        path: "till-layouts/:layoutId/edit",
+        element: <TillLayoutUpdate />,
+      },
+      {
+        path: "till-layouts/:layoutId",
+        element: <TillLayoutDetail />,
+      },
+      {
+        path: "till-profiles",
+        element: <TillProfileList />,
+      },
+      {
+        path: "till-profiles/new",
+        element: <TillProfileCreate />,
+      },
+      {
+        path: "till-profiles/:profileId/edit",
+        element: <TillProfileUpdate />,
+      },
+      {
+        path: "till-profiles/:profileId",
+        element: <TillProfileDetail />,
+      },
+      {
+        path: "users/new",
+        element: <UserCreate />,
+      },
+      {
+        path: "users/:userId/edit",
+        element: <UserUpdate />,
+      },
+      {
+        path: "users/:userId",
+        element: <UserDetail />,
       },
       {
         path: "users",
         element: <UserList />,
+      },
+      {
+        path: "accounts",
+        element: <AccountList />,
+      },
+      {
+        path: "orders",
+        element: <OrderList />,
       },
       {
         path: "settings",

@@ -5,13 +5,17 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.nfc.NfcAdapter
 import android.nfc.Tag
+import android.nfc.TagLostException
 import android.os.Build
 import android.widget.Toast
+import de.stustanet.stustapay.model.NfcState
+import io.ktor.utils.io.errors.*
 import kotlinx.coroutines.flow.update
 
 class NfcHandler(private var activity: Activity, private var nfcState: NfcState) {
     private var intent: PendingIntent? = null
     private var device: NfcAdapter? = null
+
     fun onCreate() {
         // prepare nfc intent delivery
         device = NfcAdapter.getDefaultAdapter(activity)
@@ -42,32 +46,74 @@ class NfcHandler(private var activity: Activity, private var nfcState: NfcState)
     }
 
     fun handleTag(action: String, tag: Tag) {
-        // https://developer.android.com/guide/topics/connectivity/nfc/advanced-nfc#tech-intent
+        if (!nfcState.scanRequest.value) {
+            return
+        }
 
-        if (nfcState.scanRequest.value) {
-            Toast.makeText(activity, "NFC tag read", Toast.LENGTH_LONG).show()
+        try {
+            nfcState.chipDataReady.update { false }
+            nfcState.chipCompatible.update { false }
+            nfcState.chipAuthenticated.update { false }
+            nfcState.chipProtected.update { false }
+            nfcState.chipUid.update { 0uL }
 
-            if (!tag.techList.contains("android.nfc.tech.NfcA")) {
-                Toast.makeText(activity, "Incompatible NFC tag", Toast.LENGTH_LONG).show()
+            if (nfcState.enableDebugCard.value) {
+                nfcState.chipDataReady.update { true }
+                nfcState.chipCompatible.update { true }
+                nfcState.chipAuthenticated.update { true }
+                nfcState.chipProtected.update { true }
                 return
             }
 
-            val mftag = get(tag)
-            val key = ByteArray(16) { i -> i.toByte() }
+            if (!tag.techList.contains("android.nfc.tech.NfcA")) {
+                Toast.makeText(activity, "Incompatible chip", Toast.LENGTH_LONG).show()
+                nfcState.chipDataReady.update { true }
+                return
+            }
 
+            doScan(get(tag))
+        } catch (e: TagLostException) {
+            Toast.makeText(activity, "Chip lost", Toast.LENGTH_LONG).show()
+            nfcState.chipDataReady.update { false }
+        } catch (e: IOException) {
+            Toast.makeText(activity, "Chip lost", Toast.LENGTH_LONG).show()
+            nfcState.chipDataReady.update { false }
+        }
+    }
+
+    fun doScan(tag: MifareUltralightAES) {
             try {
-                mftag.connect()
-                while (!mftag.isConnected) {}
+            tag.connect()
+            while (!tag.isConnected) {}
 
-                mftag.authenticate(key)
+            nfcState.chipCompatible.update { true }
+        } catch (e: Exception) {
+            println(e)
+            Toast.makeText(activity, "Incompatible chip", Toast.LENGTH_LONG).show()
+            nfcState.chipDataReady.update { true }
+            return
+        }
 
-                nfcState.uid.update { mftag.readSerialNumber() }
+        try {
+            tag.authenticate(nfcState.key.value)
 
-                mftag.close()
+            nfcState.chipAuthenticated.update { true }
             } catch (e: Exception) {
                 println(e)
-                Toast.makeText(activity, "Communication failed", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, "Authentication failed", Toast.LENGTH_LONG).show()
             }
+
+        if (nfcState.writeRequest.value && (!nfcState.chipProtected.value || (nfcState.chipProtected.value && nfcState.chipAuthenticated.value))) {
+            tag.writeKey(nfcState.key.value)
+            tag.protect(nfcState.protectRequest.value)
+            tag.writeUserMemory(nfcState.chipContent.value)
         }
+
+        nfcState.chipProtected.update { tag.isProtected() }
+        nfcState.chipUid.update { tag.readSerialNumber() }
+        nfcState.chipContent.update { tag.readUserMemory() }
+
+        tag.close()
+        nfcState.chipDataReady.update { true }
     }
 }
